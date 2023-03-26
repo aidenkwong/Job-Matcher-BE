@@ -21,7 +21,7 @@ from sqlalchemy.orm import sessionmaker
 load_dotenv()
 
 origins = [
-    "http://localhost:5173",
+    os.getenv("FRONTEND_URL"),
 ]
 
 
