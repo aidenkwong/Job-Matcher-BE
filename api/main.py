@@ -1,5 +1,4 @@
-import json
-from fastapi import FastAPI, File
+from fastapi import FastAPI, File, HTTPException
 from io import BytesIO
 from pdfminer.high_level import extract_text
 import openai
@@ -17,6 +16,7 @@ from sqlalchemy import (
     Table,
 )
 from sqlalchemy.orm import sessionmaker
+import uvicorn
 
 load_dotenv()
 
@@ -70,23 +70,39 @@ index = pinecone.Index("job")
 
 @app.post("/")
 def post_root(file: bytes = File()):
-    with BytesIO(file) as pdf_file:
-        text = extract_text(pdf_file)
-    openai_res = openai.Embedding.create(input=[text], model="text-embedding-ada-002")
-    embedding = openai_res["data"][0]["embedding"]
-    matches = [
-        match._data_store
-        for match in index.query(vector=embedding, top_k=10)["matches"]
-    ]
+    try:
+        with BytesIO(file) as pdf_file:
+            text = extract_text(pdf_file)
+        openai_res = openai.Embedding.create(
+            input=[text], model="text-embedding-ada-002"
+        )
+        embedding = openai_res["data"][0]["embedding"]
+        matches = [
+            match._data_store
+            for match in index.query(vector=embedding, top_k=10)["matches"]
+        ]
 
-    job_ids = [x["id"] for x in matches]
-    jobs = session.query(Job).filter(Job.c.id.in_(job_ids)).all()
-    jobs_dict = [job._asdict() for job in jobs]
-    for job in jobs_dict:
-        if job["origin"] == "ca.indeed.com":
-            job["url"] = f"https://ca.indeed.com/viewjob?jk={job['originId']}"
-    for match in matches:
+        job_ids = [x["id"] for x in matches]
+        jobs = session.query(Job).filter(Job.c.id.in_(job_ids)).all()
+
+        jobs_dict = [job._asdict() for job in jobs]
         for job in jobs_dict:
-            if match["id"] == job["id"]:
-                match.update(job)
-    return sorted(matches, key=lambda x: x["score"], reverse=True)
+            if job["origin"] == "ca.indeed.com":
+                job["url"] = f"https://ca.indeed.com/viewjob?jk={job['originId']}"
+        for match in matches:
+            for job in jobs_dict:
+                if match["id"] == job["id"]:
+                    match.update(job)
+        return sorted(matches, key=lambda x: x["score"], reverse=True)
+    except Exception as e:
+        print(e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/testing")
+def testing():
+    return os.getenv("FRONTEND_URL")
+
+
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="0.0.0.0", port=8000)
