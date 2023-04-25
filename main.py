@@ -77,10 +77,10 @@ def post_root(file: bytes = File()):
         with BytesIO(file) as pdf_file:
             text = extract_text(pdf_file)
 
-        embedding = model.encode(text)
+        embedding = [x.item() for x in model.encode(text)]
         matches = [
             match._data_store
-            for match in index.query(vector=list(embedding), top_k=10)["matches"]
+            for match in index.query(vector=embedding, top_k=10)["matches"]
         ]
 
         job_ids = [x["id"] for x in matches]
