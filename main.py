@@ -17,6 +17,9 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import sessionmaker
 import uvicorn
+from sentence_transformers import SentenceTransformer
+
+model = SentenceTransformer("all-MiniLM-L6-v2")
 
 load_dotenv()
 
@@ -73,13 +76,11 @@ def post_root(file: bytes = File()):
     try:
         with BytesIO(file) as pdf_file:
             text = extract_text(pdf_file)
-        openai_res = openai.Embedding.create(
-            input=[text], model="text-embedding-ada-002"
-        )
-        embedding = openai_res["data"][0]["embedding"]
+
+        embedding = model.encode(text)
         matches = [
             match._data_store
-            for match in index.query(vector=embedding, top_k=10)["matches"]
+            for match in index.query(vector=list(embedding), top_k=10)["matches"]
         ]
 
         job_ids = [x["id"] for x in matches]
